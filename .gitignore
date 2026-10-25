@@ -1,0 +1,16 @@
+# 运行时产物，不进仓库
+player.json
+player.log
+player.old.log
+__pycache__/
+*.pyc
+*.pyo
+
+# 打包产物（GitHub 可自动生成 zip，不用重复存）
+zip/
+*.zip
+
+# 系统文件
+Thumbs.db
+desktop.ini
+.DS_Store
