@@ -9,8 +9,8 @@ local BRIDGE_KEY = "dst_music_bridge"
 local ALIVE_KEY = "dst_music_alive"
 
 local HEARTBEAT_PERIOD = 0.5   -- 每 0.5 秒更新一次，音量和左右声道跟着玩家位置走
-local FULL_VOLUME_RANGE = 4    -- 4 格以内满音量
-local SILENT_RANGE = 20        -- 20 格以外完全听不到
+local FULL_VOLUME_RANGE = 12   -- 12 格以内满音量
+local SILENT_RANGE = 60        -- 60 格以外完全听不到（1.2.0 从 20 拉大到 60）
 local VOLUME = GetModConfigData("VOLUME") or 1
 -- 左右声道方向。有人听到左右互换，就在 Mods 菜单里改成「反向」。
 local PAN_MODE = GetModConfigData("PAN_MODE") or "flip"
@@ -54,7 +54,13 @@ local function GetListenerSpatial(inst)
     local x, _, z = inst.Transform:GetWorldPosition()
     local nearest_distance, dx, dz = nil, 0, 0
 
-    for _, player in ipairs(TheSim:FindEntities(x, 0, z, SILENT_RANGE, { "player" })) do
+    -- 用游戏自己维护的 AllPlayers 全表，比 FindEntities 扫 60 格半径快得多
+    local candidates = AllPlayers
+    if candidates == nil then
+        candidates = TheSim:FindEntities(x, 0, z, SILENT_RANGE, { "player" })
+    end
+
+    for _, player in ipairs(candidates) do
         if player:IsValid() and not player:HasTag("playerghost") then
             local px, _, pz = player.Transform:GetWorldPosition()
             local ex, ez = x - px, z - pz
@@ -65,9 +71,8 @@ local function GetListenerSpatial(inst)
         end
     end
 
-    if nearest_distance == nil then
-        -- 附近没有任何玩家（走出 20 格了）：完全静音。
-        -- 这里以前返回 VOLUME，导致走远后突然变响。
+    if nearest_distance == nil or nearest_distance >= SILENT_RANGE then
+        -- 附近没有任何玩家，或者最近的人也在 60 格外：完全静音。
         return 0, 0
     end
     if nearest_distance < 0.05 then
