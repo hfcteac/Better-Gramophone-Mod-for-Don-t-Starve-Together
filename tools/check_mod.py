@@ -130,6 +130,39 @@ def main():
     proc.stdin.flush()
     time.sleep(3)
 
+    # ---- 给作物唱歌 ----
+    # 种一株胡萝卜在留声机旁边，手动标成「可照料」，
+    # 开机后等 3 秒，看它有没有被照料到（tendable 会变 false）。
+    proc.stdin.write(
+        'PLANT_TEST = SpawnPrefab("farm_plant_carrot"); '
+        'PLANT_TEST.Transform:SetPosition(11,0,10); '
+        'local tt = PLANT_TEST.components.farmplanttendable; '
+        'print("TEND_BEFORE", tostring(tt ~= nil and tt.tendable)); '
+        'if tt ~= nil then tt:SetTendable(true) end; '
+        'print("TEND_ARMED", tostring(tt ~= nil and tt.tendable))\n'
+    )
+    proc.stdin.flush()
+    time.sleep(2)
+
+    proc.stdin.write('print("TEND_AFTER", tostring('
+                     'PLANT_TEST.components.farmplanttendable.tendable))\n')
+    proc.stdin.flush()
+    time.sleep(1)
+
+    # 对照：关机后植物不该再被照料
+    proc.stdin.write('PLANT2 = SpawnPrefab("farm_plant_potato"); '
+                     'PLANT2.Transform:SetPosition(11.5,0,10); '
+                     'PLANT2.components.farmplanttendable:SetTendable(true); '
+                     'PH_TEST.components.machine:TurnOff(); '
+                     'print("TEND_OFF_BEFORE", tostring(PLANT2.components.farmplanttendable.tendable))\n')
+    proc.stdin.flush()
+    time.sleep(3)
+
+    proc.stdin.write('print("TEND_OFF_AFTER", tostring('
+                     'PLANT2.components.farmplanttendable.tendable))\n')
+    proc.stdin.flush()
+    time.sleep(1)
+
     proc.stdin.write("c_shutdown(true)\n")
     proc.stdin.flush()
     try:
@@ -150,7 +183,7 @@ def main():
     for line in text.splitlines():
         if any(k in line for k in ("myfirstmod", "Registering prefab", "pcbridge",
                                    "RECIPE_CHECK", "ING", "TECH_LEVEL", "ITEM_",
-                                   "CARRY_CB", "MACHINE_ON",
+                                   "CARRY_CB", "MACHINE_ON", "TEND_",
                                    "invalid", "attempt to", "error")):
             print(" ", line.strip())
 
@@ -166,9 +199,20 @@ def main():
     print("状态写入   :", "OK" if state_ok else "未确认")
     if state_text:
         print("  内容:", state_text.replace("\n", " | ")[:120])
+
+    tend_armed = "TEND_ARMED\ttrue" in text
+    tend_after = "TEND_AFTER\tfalse" in text
+    tend_off_kept = "TEND_OFF_AFTER\ttrue" in text
+    print("作物可照料 :", "OK" if tend_armed else "失败（没造出植物）")
+    print("开机照料   :", "OK" if tend_after else "失败（植物没被照料！）")
+    print("关机不照料 :", "OK" if tend_off_kept else "失败（关机后还在照料）")
+
     print("无报错     :", "OK" if not any(
         k in text for k in ("invalid filepath", "attempt to index", "stack traceback")) else "有错误")
-    return 0 if (ok_mod and ok_prefab and ok_recipe) else 1
+
+    all_ok = (ok_mod and ok_prefab and ok_recipe
+              and tend_armed and tend_after and tend_off_kept)
+    return 0 if all_ok else 1
 
 
 if __name__ == "__main__":

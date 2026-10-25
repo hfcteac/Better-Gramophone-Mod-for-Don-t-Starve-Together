@@ -126,7 +126,17 @@ local function HasBridgeRecord(inst)
 end
 
 local function StopBridge(inst)
-    if inst == nil or inst._bridge_task == nil then
+    if inst == nil then
+        return
+    end
+
+    if inst._tend_task ~= nil then
+        local tend = inst._tend_task
+        inst._tend_task = nil
+        pcall(function() tend:Cancel() end)
+    end
+
+    if inst._bridge_task == nil then
         return
     end
 
@@ -134,6 +144,49 @@ local function StopBridge(inst)
     inst._bridge_task = nil
     pcall(function() task:Cancel() end)
     WriteState(inst, "stop")
+end
+
+-- [[ 给作物唱歌 ]]
+-- 原版留声机放歌时会每秒给附近的「可照料作物」唱一次歌，让它们生长。
+-- 那段逻辑写在原版 TryToPlayRecord 里，被我们接管 turnonfn 后就不会跑了，
+-- 所以必须在这里按原版一模一样的做法补上，否则留声机就失去了照料作物的功能。
+local FARM_PLANT_TAGS = { "tendable_farmplant" }
+
+local function TendNearbyPlants(inst)
+    local range = TUNING ~= nil and TUNING.PHONOGRAPH_TEND_RANGE
+    if range == nil then
+        return
+    end
+
+    -- 拿在手上 / 放进背包时 Transform 会被归零（RemoveFromScene 造成），
+    -- 这时算出来的位置是地图原点，绝不能拿它去照料作物。
+    local inventoryitem = inst.components ~= nil and inst.components.inventoryitem
+    if inventoryitem ~= nil and inventoryitem.owner ~= nil then
+        return
+    end
+
+    local x, _, z = inst.Transform:GetWorldPosition()
+
+    for _, plant in ipairs(TheSim:FindEntities(x, 0, z, range, FARM_PLANT_TAGS)) do
+        local tendable = plant.components ~= nil and plant.components.farmplanttendable
+        if tendable ~= nil and tendable.tendable and tendable.ontendtofn ~= nil then
+            -- 和原版一样：不带参数调用，让组件自己判断能不能照料
+            pcall(tendable.TendTo, tendable)
+        end
+    end
+end
+
+local function StartTending(inst)
+    if inst._tend_task ~= nil then
+        pcall(function() inst._tend_task:Cancel() end)
+        inst._tend_task = nil
+    end
+
+    -- 原版是每秒一次，第一次延迟在播种世界时随机，这里照抄
+    local initial_delay = POPULATING and math.random() or nil
+    inst._tend_task = inst:DoPeriodicTask(1, Safe(function(inst)
+        TendNearbyPlants(inst)
+    end, "照料作物"), initial_delay)
 end
 
 local function StartBridge(inst)
@@ -174,6 +227,9 @@ local function StartBridge(inst)
 
         WriteState(inst, "play")
     end, "心跳"))
+
+    -- 补回原版「给作物唱歌」的效果
+    StartTending(inst)
 end
 
 -- 告诉电脑端"世界开着了"；进主菜单或者退出游戏就不再写
