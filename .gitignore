@@ -7,8 +7,12 @@ __pycache__/
 *.pyo
 
 # 打包产物（GitHub 可自动生成 zip，不用重复存）
+# 只忽略仓库根目录下的发布包，不能写成 *.zip ——
+# 那会把 饥荒留声机播放器/_internal/base_library.zip 一起排除掉，
+# 而从 GitHub 下载的包缺这个文件，播放器就报
+# "Failed to start embedded python interpreter"。
 zip/
-*.zip
+/*.zip
 
 # 系统文件
 Thumbs.db
