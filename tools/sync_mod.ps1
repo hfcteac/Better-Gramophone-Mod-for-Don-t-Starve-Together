@@ -1,4 +1,4 @@
-# 把桌面工程里的 mod 文件同步到「游戏真正读取」的 mods 目录
+﻿# 把桌面工程里的 mod 文件同步到「游戏真正读取」的 mods 目录
 # 注意：DST 读的是游戏安装目录下的 mods，不是文档里的那个
 # 改完 modmain.lua / modinfo.lua 之后，右键运行这个脚本，然后重启游戏
 
@@ -28,4 +28,4 @@ foreach ($extra in @("modicon.tex", "modicon.xml", "说明书.txt")) {
 Write-Host "已同步到：$dst"
 Get-ChildItem $dst -Recurse -File | ForEach-Object { Write-Host ("  " + $_.Name) }
 Write-Host ""
-Write-Host "重启游戏后，Mods 菜单里就能看到「我的第一个饥荒Mod播放器测试」和它的图标了。"
+Write-Host "重启游戏后，Mods 菜单里就能看到「更好的唱片（可连电脑）」和它的图标了。"

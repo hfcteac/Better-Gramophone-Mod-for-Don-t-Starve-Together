@@ -1,6 +1,6 @@
 # 更好的唱片（可连电脑） · 饥荒联机版 mod
 
-> 版本 **1.2.0**
+> 版本 **1.2.1**
 
 给游戏里的**留声机**加一张「连接电脑」唱片：
 
@@ -56,6 +56,11 @@ $py = "D:\venv_oscilloscope\Scripts\python.exe"
 > 这个坑踩过了 —— 放错地方游戏 Mods 界面根本不显示。
 >
 > 播放器文件夹里的 `_internal` 别删。要搬位置就整个文件夹一起搬。
+>
+> ⚠️ 打包出来的 `_internal\base_library.zip` 会被 360安全卫士 / 卡巴斯基 当病毒删掉，
+> 删了播放器就报 `Failed to start embedded python interpreter`。
+> 玩家侧自查工具是播放器目录里的 `检查是否完整.bat`（GBK 编码，cmd 窗口显示中文）。
+> 改这个 bat 要重新跑 `tools/make_check_bat.py`，别直接用编辑器存成 UTF-8。
 > **改了源码之后，右键运行 `tools\sync_mod.ps1`**，再重启游戏才生效。
 
 ---

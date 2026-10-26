@@ -3,7 +3,7 @@
 
 产物：
   <工程目录>\\zip\\                    整理好的文件夹
-  <工程目录>\\更好的唱片v1.2.0.zip      可以直接发给别人的压缩包
+  <工程目录>\\更好的唱片v1.2.1.zip      可以直接发给别人的压缩包
 
 包含：
   myfirstmod\\              游戏 mod
@@ -24,7 +24,7 @@ MOD_SRC = Path(r"D:\SteamLibrary\steamapps\common\Don't Starve Together\mods\myf
 PLAYER_SRC = Path(r"C:\Users\hafeizhou\Desktop\饥荒留声机播放器")
 
 STAGE = PROJ / "zip"
-ARCHIVE = PROJ / "更好的唱片v1.2.0.zip"
+ARCHIVE = PROJ / "更好的唱片v1.2.1.zip"
 
 # 这些是运行时产物，不该发给别人
 SKIP_NAMES = {"player.json", "player.log", "player.old.log"}
