@@ -110,11 +110,30 @@ local function HasBridgeRecord(inst)
     return ok and items ~= nil and items[1] ~= nil
 end
 
+-- [[ 给别的 mod 兜底：容器也要有 SoundEmitter ]]
+-- 有些 mod（例如创意工坊的「AV唱片」）在留声机被移除时会直接写：
+--     local owner = inst.components.inventoryitem.owner
+--     owner.SoundEmitter:KillSound("xxx")
+-- 当留声机被放进背包、然后带着背包进洞穴时，owner 是那个背包而不是玩家。
+-- 背包没有 SoundEmitter，那些 mod 就会报 attempt to index field 'SoundEmitter'。
+-- 更致命的是：这个错抛在引擎的 PushEvent 里面，会把整个服务器进程带崩 ——
+-- 玩家看到的现象就是「你已于服务器断开连接」，而且一进洞穴必现。
+--
+-- 这里在留声机被放进容器的那一刻先给容器补一个空的 SoundEmitter，
+-- 让那些 mod 的调用变成无害的空操作。对容器本身没有任何副作用。
+local function EnsureSoundEmitter(owner)
+    if owner == nil or owner.SoundEmitter ~= nil or owner.entity == nil then
+        return
+    end
+    pcall(function()
+        owner.entity:AddSoundEmitter()
+    end)
+end
+
 local function StopBridge(inst)
     if inst == nil then
         return
     end
-
     if inst._tend_task ~= nil then
         local tend = inst._tend_task
         inst._tend_task = nil
@@ -186,12 +205,23 @@ local function StartBridge(inst)
     end
     WriteState(inst, "play")
 
+    -- 留声机已经在背包里被开机的情况：容器同样需要兜底
+    local carried_by = inst.components.inventoryitem
+    if carried_by ~= nil then
+        EnsureSoundEmitter(carried_by.owner)
+    end
+
     if inst._bridge_task ~= nil then
         pcall(function() inst._bridge_task:Cancel() end)
         inst._bridge_task = nil
     end
 
     inst._bridge_task = inst:DoPeriodicTask(HEARTBEAT_PERIOD, Safe(function(inst)
+        -- 实体已经被移除时不要再写，免得引用已销毁的对象
+        if inst == nil or not inst:IsValid() then
+            return
+        end
+
         if not HasBridgeRecord(inst) then
             StopBridge(inst)
             local machine2 = inst.components and inst.components.machine
@@ -228,7 +258,12 @@ AddSimPostInit(function()
 end)
 
 AddPrefabPostInit("phonograph", function(inst)
-    if not TheWorld.ismastersim or inst == nil or inst.components == nil then
+    if inst == nil or inst.components == nil then
+        return inst
+    end
+    -- 洞穴分片启动时 TheWorld 可能还没建好，这里必须先判空，
+    -- 否则 TheWorld.ismastersim 会直接报 nil value
+    if TheWorld == nil or not TheWorld.ismastersim then
         return inst
     end
 
@@ -256,20 +291,38 @@ AddPrefabPostInit("phonograph", function(inst)
     inst:ListenForEvent("turnedoff", Safe(StopBridge, "关闭"))
     inst:ListenForEvent("onremove", Safe(StopBridge, "移除"))
 
-    -- 拿起留声机照样播放：原版在被放进背包时会强制关机，这里把那个回调去掉
-    if CARRY_PLAY then
-        local inventoryitem = inst.components.inventoryitem
+    -- 兜底：万一别的 mod 的 onremove 监听器排在前面，这里再补一次
+    inst:ListenForEvent("onremove", Safe(function(inst)
+        local inventoryitem = inst.components and inst.components.inventoryitem
         if inventoryitem ~= nil then
-            local original = inventoryitem.onputininventoryfn
-            if original == inst.OnPutInInventory then
-                inventoryitem.onputininventoryfn = nil
-            elseif original ~= nil then
-                -- 别的 mod 也改过这个回调：包一层，只在放的是我们的唱片时跳过
-                inventoryitem.onputininventoryfn = function(inst2, owner, ...)
-                    if not HasBridgeRecord(inst2) then
-                        return original(inst2, owner, ...)
-                    end
+            EnsureSoundEmitter(inventoryitem.owner)
+        end
+    end, "移除兜底"))
+
+    -- 拿起留声机照样播放：原版在被放进背包时会强制关机，这里改成只在
+    -- 「放的是我们的唱片」时跳过关机；而且无论如何都先替容器补上 SoundEmitter，
+    -- 否则带着背包进洞穴会让别的 mod 崩掉整个服务器。
+    local inventoryitem = inst.components.inventoryitem
+    if inventoryitem ~= nil then
+        local original = inventoryitem.onputininventoryfn
+
+        inventoryitem.onputininventoryfn = function(inst2, owner, ...)
+            EnsureSoundEmitter(owner)
+
+            if not CARRY_PLAY then
+                if original ~= nil then
+                    return original(inst2, owner, ...)
                 end
+                return
+            end
+
+            -- CARRY_PLAY 开着：我们的唱片进背包也继续放，不关机
+            if HasBridgeRecord(inst2) then
+                return
+            end
+
+            if original ~= nil then
+                return original(inst2, owner, ...)
             end
         end
     end
