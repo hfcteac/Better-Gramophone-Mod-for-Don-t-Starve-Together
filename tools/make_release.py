@@ -3,7 +3,7 @@
 
 产物：
   <工程目录>\\zip\\                    整理好的文件夹
-  <工程目录>\\更好的唱片v1.2.2.zip      可以直接发给别人的压缩包
+  <工程目录>\\更好的唱片v1.2.3.zip      可以直接发给别人的压缩包
 
 包含：
   myfirstmod\\              游戏 mod
@@ -29,7 +29,7 @@ MOD_ROOT_FILES = ["modinfo.lua", "modmain.lua", "modicon.tex", "modicon.xml"]
 MOD_PREFABS = ["pcbridge_record.lua"]
 
 STAGE = PROJ / "zip"
-ARCHIVE = PROJ / "更好的唱片v1.2.2.zip"
+ARCHIVE = PROJ / "更好的唱片v1.2.3.zip"
 
 # 这些是运行时产物，不该发给别人
 SKIP_NAMES = {"player.json", "player.log", "player.old.log"}

@@ -13,12 +13,12 @@ description = [[
 【BUG 反馈】邮箱 3024026103@qq.com
 主题：1846275+Bug反馈+当前时间（年月日）
 正文写清 bug，作者会尽快处理。
-【更新】1.0.0 首发｜1.1.0 修作物｜1.2.0 加距离｜1.2.2 修播放器
+【更新】1.0.0 首发｜1.1.0 修作物｜1.2.0 加距离｜1.2.3 左右平衡
 （照片是我对象，他已经离开了。我再也没有找到过他，好想他。）
 ]]
 
 author = "hafeizhou"
-version = "1.2.2"
+version = "1.2.3"
 
 api_version = 10
 dst_compatible = true
@@ -57,16 +57,5 @@ configuration_options =
             { description = "关", data = false },
         },
         default = true,
-    },
-    {
-        name = "PAN_MODE",
-        label = "左右声道",
-        hover = "如果听到左右反了，就换成「反向」",
-        options =
-        {
-            { description = "反向（左右互换）", data = "flip" },
-            { description = "正常", data = "normal" },
-        },
-        default = "flip",
     },
 }

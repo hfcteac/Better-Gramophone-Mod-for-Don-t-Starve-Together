@@ -12,6 +12,34 @@ ROOT = Path(os.environ["TEMP"]) / "dstmod_check"
 CLUSTER = ROOT / "DoNotStarveTogether" / "CheckCluster"
 MASTER = CLUSTER / "Master"
 
+PROJ = Path(r"C:\Users\hafeizhou\Desktop\Dontstarvetogethrer")
+
+# 用独属的目录名，绝不碰创意工坊订阅的那份（3827053397），
+# 也不碰 myfirstmod。测完 setup 的反向操作会把它删掉。
+MOD_ID = "myfirstmod_check"
+MOD_DST = Path(r"D:\SteamLibrary\steamapps\common\Don't Starve Together\mods") / MOD_ID
+
+MOD_FILES = ["modinfo.lua", "modmain.lua", "modicon.tex", "modicon.xml"]
+MOD_PREFABS = ["pcbridge_record.lua"]
+
+
+def install_mod():
+    """把工程源码里的 mod 装到游戏 mods 目录下的临时目录。"""
+    if MOD_DST.exists():
+        shutil.rmtree(MOD_DST)
+    MOD_DST.mkdir(parents=True)
+    for name in MOD_FILES:
+        shutil.copy2(str(PROJ / name), str(MOD_DST / name))
+    prefabs = MOD_DST / "scripts" / "prefabs"
+    prefabs.mkdir(parents=True)
+    for name in MOD_PREFABS:
+        shutil.copy2(str(PROJ / "scripts" / "prefabs" / name), str(prefabs / name))
+    shutil.copy2(str(PROJ / "说明书.txt"), str(MOD_DST / "说明书.txt"))
+
+
+def remove_mod():
+    shutil.rmtree(str(MOD_DST), ignore_errors=True)
+
 
 def write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -53,15 +81,23 @@ master_server_port = 27218
 authentication_port = 8968
 """)
     write(MASTER / "modoverrides.lua", """return {
-  ["myfirstmod"] = {
+  ["%s"] = {
     enabled = true,
-    configuration_options = { VOLUME = 1.0, CARRY_PLAY = true, PAN_MODE = "flip" },
+    configuration_options = { VOLUME = 1.0, CARRY_PLAY = true },
   },
 }
-""")
+""" % MOD_ID)
 
 
 def main():
+    install_mod()
+    try:
+        return run()
+    finally:
+        remove_mod()
+
+
+def run():
     setup()
     proc = subprocess.Popen(
         [EXE,

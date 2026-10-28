@@ -8,13 +8,10 @@ local RECORD_TAG = "pcbridge_record"
 local BRIDGE_KEY = "dst_music_bridge"
 local ALIVE_KEY = "dst_music_alive"
 
-local HEARTBEAT_PERIOD = 0.5   -- 每 0.5 秒更新一次，音量和左右声道跟着玩家位置走
+local HEARTBEAT_PERIOD = 0.5   -- 每 0.5 秒更新一次，音量跟着玩家位置走
 local FULL_VOLUME_RANGE = 12   -- 12 格以内满音量
 local SILENT_RANGE = 60        -- 60 格以外完全听不到（1.2.0 从 20 拉大到 60）
 local VOLUME = GetModConfigData("VOLUME") or 1
--- 左右声道方向。有人听到左右互换，就在 Mods 菜单里改成「反向」。
-local PAN_MODE = GetModConfigData("PAN_MODE") or "flip"
-local PAN_SIGN = (PAN_MODE == "flip") and -1 or 1
 -- 留声机被拿在手上时是否继续播放
 local CARRY_PLAY = GetModConfigData("CARRY_PLAY")
 if CARRY_PLAY == nil then
@@ -42,17 +39,17 @@ local function Safe(fn, label)
     end
 end
 
--- 找出离留声机最近的玩家，算出音量（距离）和左右声道（屏幕方向）
-local function GetListenerSpatial(inst)
+-- 找出离留声机最近的玩家，算出音量（只看距离，左右声道固定居中）
+local function GetListenerVolume(inst)
     -- 拿在手上时位置会被归零（RemoveFromScene 后 Transform 变成局部坐标），
-    -- 所以直接用「贴着耳朵」处理：满音量、不偏声道。
+    -- 所以直接用「贴着耳朵」处理：满音量。
     local inventoryitem = inst.components and inst.components.inventoryitem
     if inventoryitem ~= nil and inventoryitem.owner ~= nil then
-        return VOLUME, 0
+        return VOLUME
     end
 
     local x, _, z = inst.Transform:GetWorldPosition()
-    local nearest_distance, dx, dz = nil, 0, 0
+    local nearest_distance = nil
 
     -- 用游戏自己维护的 AllPlayers 全表，比 FindEntities 扫 60 格半径快得多
     local candidates = AllPlayers
@@ -66,56 +63,39 @@ local function GetListenerSpatial(inst)
             local ex, ez = x - px, z - pz
             local distance = math.sqrt(ex * ex + ez * ez)
             if nearest_distance == nil or distance < nearest_distance then
-                nearest_distance, dx, dz = distance, ex, ez
+                nearest_distance = distance
             end
         end
     end
 
     if nearest_distance == nil or nearest_distance >= SILENT_RANGE then
         -- 附近没有任何玩家，或者最近的人也在 60 格外：完全静音。
-        return 0, 0
+        return 0
     end
     if nearest_distance < 0.05 then
-        return VOLUME, 0
+        return VOLUME
     end
 
     local falloff = 1 - (nearest_distance - FULL_VOLUME_RANGE) / (SILENT_RANGE - FULL_VOLUME_RANGE)
-    local volume = VOLUME * math.max(0, math.min(1, falloff))
-
-    -- 左右声道：优先用镜头右向量，拿不到就退回 0（单声道）
-    local pan = 0
-    local ok, right_x, right_z = pcall(function()
-        local camera = TheCamera
-        if camera ~= nil and camera.GetRightVec ~= nil then
-            local right = camera:GetRightVec()
-            if right ~= nil then
-                return right.x, right.z
-            end
-        end
-        return nil, nil
-    end)
-
-    if ok and right_x ~= nil and right_z ~= nil then
-        pan = (dx * right_x + dz * right_z) / nearest_distance
-    end
-
-    return volume, math.max(-1, math.min(1, pan)) * 0.8 * PAN_SIGN
+    return VOLUME * math.max(0, math.min(1, falloff))
 end
 
 local function WriteState(inst, action)
-    local volume, pan = 0, 0
+    local volume = 0
     if action == "play" and inst ~= nil then
-        local ok, v, p = pcall(GetListenerSpatial, inst)
+        local ok, v = pcall(GetListenerVolume, inst)
         if ok then
-            volume, pan = v or 0, p or 0
+            volume = v or 0
         end
     end
 
-    -- 饥荒禁止 mod 用 io.open 写文件，只能写进存档目录
+    -- 饥荒禁止 mod 用 io.open 写文件，只能写进存档目录。
+    -- pan 固定写 0（左右平衡）：1.2.3 起不再做声道偏移，
+    -- 但字段保留，播放器那边就不用改。
     TheSim:SetPersistentString(BRIDGE_KEY, table.concat({
         "action=" .. action,
         "volume=" .. string.format("%.3f", volume),
-        "pan=" .. string.format("%.3f", pan),
+        "pan=0.000",
         "time=" .. tostring(os.time()),
     }, "\n"), false)
 end
@@ -205,15 +185,6 @@ local function StartBridge(inst)
         inst.AnimState:PushAnimation("play_loop", true)
     end
     WriteState(inst, "play")
-
-    -- 留一行诊断：左右声道还是不对的话，看这行的镜头朝向就知道问题在哪
-    pcall(function()
-        local heading = "?"
-        if TheCamera ~= nil and TheCamera.headingtarget ~= nil then
-            heading = string.format("%.1f", TheCamera.headingtarget)
-        end
-        print(string.format("[pcbridge] 开始播放 镜头朝向=%s 声道方向=%s", heading, PAN_MODE))
-    end)
 
     if inst._bridge_task ~= nil then
         pcall(function() inst._bridge_task:Cancel() end)
