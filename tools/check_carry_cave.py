@@ -31,10 +31,14 @@ from pathlib import Path
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-EXE = (r"D:\SteamLibrary\steamapps\common\Don't Starve Together"
-       r"\bin64\dontstarve_dedicated_server_nullrenderer_x64.exe")
-GAME_MODS = Path(r"D:\SteamLibrary\steamapps\common\Don't Starve Together\mods")
-PROJ = Path(r"C:\Users\hafeizhou\Desktop\Dontstarvetogethrer")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _paths
+
+_paths.require_game()
+
+EXE = str(_paths.SERVER_EXE)
+GAME_MODS = _paths.GAME_MODS
+PROJ = _paths.REPO
 
 ROOT = Path(os.environ["TEMP"]) / "dstcarry_check"
 CLUSTER = ROOT / "DoNotStarveTogether" / "CarryCluster"
@@ -48,8 +52,8 @@ MOD_DST = GAME_MODS / MOD_ID
 SABOTAGE_ID = "aa_sabotage_check"
 SABOTAGE_DST = GAME_MODS / SABOTAGE_ID
 
-MOD_FILES = ["modinfo.lua", "modmain.lua", "modicon.tex", "modicon.xml"]
-MOD_PREFABS = ["pcbridge_record.lua"]
+MOD_FILES = _paths.MOD_ROOT_FILES
+MOD_PREFABS = _paths.MOD_PREFABS
 
 # 可用环境变量 CARRY_TEST_MODMAIN 指定用哪个 modmain.lua 来测，
 # 方便拿旧版做对照实验（证明修复前后确实是这个差别）

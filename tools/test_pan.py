@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import soundcard as sc
 
-EXE = r"C:\Users\hafeizhou\Desktop\饥荒留声机播放器\DSTMusicPlayer.exe"
+EXE = str(Path(__file__).resolve().parent.parent / "饥荒留声机播放器" / "DSTMusicPlayer.exe")
 TMP = Path(os.environ["TEMP"]) / "pan_test"
 TONE = TMP / "tone.wav"
 

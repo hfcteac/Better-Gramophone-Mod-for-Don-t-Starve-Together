@@ -17,7 +17,8 @@ MAX_LINES = 17
 CHARS_PER_LINE = 36
 MAX_CHARS = 77        # 游戏的字符数硬上限
 
-MODINFO = Path(r"C:\Users\hafeizhou\Desktop\Dontstarvetogethrer\modinfo.lua")
+# 相对路径：本文件在 <仓库>/tools/ 下，往上一级就是仓库根
+MODINFO = Path(__file__).resolve().parent.parent / "modinfo.lua"
 
 
 def visual_width(line):

@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""在隔离的临时目录里跑专用服务器，验证 mod 能加载、配方和图标正常。"""
+"""在隔离的临时目录里跑专用服务器，验证 mod 能加载、配方和图标正常。
+
+所有路径相对脚本自身推算，不写死绝对路径 —— 仓库拷到任何电脑都能跑。
+唯一和机器相关的是游戏安装目录，用 tools/_paths.py 自动探测，
+也可以用环境变量指定：set DST_DIR=游戏安装路径
+"""
 import os
 import shutil
 import subprocess
@@ -7,20 +12,25 @@ import sys
 import time
 from pathlib import Path
 
-EXE = r"D:\SteamLibrary\steamapps\common\Don't Starve Together\bin64\dontstarve_dedicated_server_nullrenderer_x64.exe"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _paths
+
+_paths.require_game()
+
+EXE = str(_paths.SERVER_EXE)
 ROOT = Path(os.environ["TEMP"]) / "dstmod_check"
 CLUSTER = ROOT / "DoNotStarveTogether" / "CheckCluster"
 MASTER = CLUSTER / "Master"
 
-PROJ = Path(r"C:\Users\hafeizhou\Desktop\Dontstarvetogethrer")
+PROJ = _paths.REPO
 
 # 用独属的目录名，绝不碰创意工坊订阅的那份（3827053397），
 # 也不碰 myfirstmod。测完 setup 的反向操作会把它删掉。
 MOD_ID = "myfirstmod_check"
-MOD_DST = Path(r"D:\SteamLibrary\steamapps\common\Don't Starve Together\mods") / MOD_ID
+MOD_DST = _paths.GAME_MODS / MOD_ID
 
-MOD_FILES = ["modinfo.lua", "modmain.lua", "modicon.tex", "modicon.xml"]
-MOD_PREFABS = ["pcbridge_record.lua"]
+MOD_FILES = _paths.MOD_ROOT_FILES
+MOD_PREFABS = _paths.MOD_PREFABS
 
 
 def install_mod():

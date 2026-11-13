@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """打发布包：只放玩家需要的东西，不放源码。
 
+用法（在任意目录执行都行，路径按脚本自身位置推算）：
+    python tools/make_release.py
+
 产物：
-  <工程目录>\\zip\\                    整理好的文件夹
-  <工程目录>\\更好的唱片v1.2.4.zip      可以直接发给别人的压缩包
+  <仓库>/zip/                     整理好的文件夹（临时暂存，可随时删）
+  <仓库>/更好的唱片v1.2.4.zip      可以直接发给别人的压缩包
 
 包含：
   myfirstmod\\              游戏 mod
@@ -20,8 +23,10 @@ from pathlib import Path
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-PROJ = Path(r"C:\Users\hafeizhou\Desktop\Dontstarvetogethrer")
-PLAYER_SRC = Path(r"C:\Users\hafeizhou\Desktop\饥荒留声机播放器")
+# 全部用相对路径：本文件在 <仓库>/tools/ 下，往上一级就是仓库根。
+# 这样把整个仓库拷到任何电脑、任何盘符都能直接跑。
+PROJ = Path(__file__).resolve().parent.parent
+PLAYER_SRC = PROJ / "饥荒留声机播放器"
 
 # mod 文件直接从工程源码组装，不再依赖游戏 mods 目录或创意工坊目录。
 # 以前从游戏目录复制，那边一被删或被订阅的工坊版覆盖，打包就会拿到错的或旧的。

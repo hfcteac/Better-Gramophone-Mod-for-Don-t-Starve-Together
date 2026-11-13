@@ -26,10 +26,14 @@ from pathlib import Path
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-EXE = (r"D:\SteamLibrary\steamapps\common\Don't Starve Together"
-       r"\bin64\dontstarve_dedicated_server_nullrenderer_x64.exe")
-GAME_MODS = Path(r"D:\SteamLibrary\steamapps\common\Don't Starve Together\mods")
-PROJ = Path(r"C:\Users\hafeizhou\Desktop\Dontstarvetogethrer")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _paths
+
+_paths.require_game()
+
+EXE = str(_paths.SERVER_EXE)
+GAME_MODS = _paths.GAME_MODS
+PROJ = _paths.REPO
 
 ROOT = Path(os.environ["TEMP"]) / "dstcave_check"
 CLUSTER = ROOT / "DoNotStarveTogether" / "CaveCluster"
@@ -39,8 +43,8 @@ CAVES = CLUSTER / "Caves"
 MOD_ID = "myfirstmod_cavecheck"
 MOD_DST = GAME_MODS / MOD_ID
 
-MOD_FILES = ["modinfo.lua", "modmain.lua", "modicon.tex", "modicon.xml"]
-MOD_PREFABS = ["pcbridge_record.lua"]
+MOD_FILES = _paths.MOD_ROOT_FILES
+MOD_PREFABS = _paths.MOD_PREFABS
 
 MOD_OVERRIDE = """return {
   ["%s"] = {

@@ -4,6 +4,7 @@
 用真实音频文件跑一遍，逐步断言，最后汇总结果。
 """
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -13,8 +14,17 @@ from pathlib import Path
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-BASE = Path(r"C:\Users\hafeizhou\Desktop\Dontstarvetogethrer")
-SRC = Path(r"C:\Users\hafeizhou\Desktop\刻碟视频\128k版本\output")
+# 相对路径：本文件在 <仓库>/tools/ 下，往上一级就是仓库根
+BASE = Path(__file__).resolve().parent.parent
+
+# 测试用的音乐文件夹：不放默认值，必须自己指定
+#     set DST_TEST_MUSIC=D:\你的音乐\output
+_src = os.environ.get("DST_TEST_MUSIC")
+if not _src:
+    print("请先指定测试用的音乐文件夹：")
+    print(r'    set DST_TEST_MUSIC=D:\你的音乐\output')
+    raise SystemExit(1)
+SRC = Path(_src)
 tracks = sorted(str(p) for p in SRC.glob("*.mp3"))[:1]
 print("测试曲目:", Path(tracks[0]).name)
 

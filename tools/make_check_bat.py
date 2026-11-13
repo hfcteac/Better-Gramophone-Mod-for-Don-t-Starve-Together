@@ -18,7 +18,8 @@ from pathlib import Path
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-OUT = Path(r"C:\Users\hafeizhou\Desktop\饥荒留声机播放器\检查是否完整.bat")
+# 相对路径：本文件在 <仓库>/tools/ 下，往上一级就是仓库根
+OUT = Path(__file__).resolve().parent.parent / "饥荒留声机播放器" / "检查是否完整.bat"
 
 # (相对路径, 中文说明)
 CHECKS = [
