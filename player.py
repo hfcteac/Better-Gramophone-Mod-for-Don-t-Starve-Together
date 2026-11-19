@@ -207,28 +207,43 @@ def iter_save_dirs(root, max_depth=6):
             continue
 
 
+def state_roots():
+    """存档根目录候选：正常是「文档」里的，个别电脑的文档被 OneDrive 接管。"""
+    home = Path.home()
+    candidates = [
+        home / "Documents" / "Klei" / "DoNotStarveTogether",
+        home / "OneDrive" / "Documents" / "Klei" / "DoNotStarveTogether",
+        home / "OneDrive" / "文档" / "Klei" / "DoNotStarveTogether",
+    ]
+    roots = []
+    for path in candidates:
+        if path.is_dir() and path not in roots:
+            roots.append(path)
+    return roots
+
+
 def find_state_file(root=None):
-    if root is None:
-        root = Path.home() / "Documents" / "Klei" / "DoNotStarveTogether"
-    root = Path(root)
-    if not root.is_dir():
+    roots = [Path(root)] if root is not None else state_roots()
+    roots = [r for r in roots if r.is_dir()]
+    if not roots:
         return None
 
     now = time.time()
     newest_dir, newest_beat = None, 0.0
     playing_dir, playing_time = None, 0.0
 
-    for save_dir in iter_save_dirs(root):
-        stamp = read_timestamp(save_dir / ALIVE_FILENAME)
-        if stamp > newest_beat:
-            newest_beat, newest_dir = stamp, save_dir
+    for base in roots:
+        for save_dir in iter_save_dirs(base):
+            stamp = read_timestamp(save_dir / ALIVE_FILENAME)
+            if stamp > newest_beat:
+                newest_beat, newest_dir = stamp, save_dir
 
-        state = read_state(save_dir / STATE_FILENAME)
-        if (state is not None
-                and state["action"] == "play"
-                and now - state["time"] <= 8.0
-                and state["time"] > playing_time):
-            playing_dir, playing_time = save_dir, state["time"]
+            state = read_state(save_dir / STATE_FILENAME)
+            if (state is not None
+                    and state["action"] == "play"
+                    and now - state["time"] <= 8.0
+                    and state["time"] > playing_time):
+                playing_dir, playing_time = save_dir, state["time"]
 
     chosen = playing_dir or newest_dir
     return chosen / STATE_FILENAME if chosen else None
@@ -724,19 +739,34 @@ class GameWatcher(threading.Thread):
 
     def run(self):
         state_path = None
+        discovered = False
         next_discover = 0.0
+        last_connected = None
 
         while not self.stop_event.is_set():
             now = time.time()
             try:
                 if state_path is None or now >= next_discover:
                     next_discover = now + 2.0
-                    state_path = find_state_file()
+                    found = find_state_file()
+                    if not discovered or found != state_path:
+                        discovered = True
+                        if found is None:
+                            log("没找到存档里的状态文件（扫过：%s）"
+                                % "、".join(str(r) for r in state_roots()))
+                        else:
+                            log("存档状态文件：%s" % found)
+                    state_path = found
 
                 alive = 0.0
                 if state_path is not None:
                     alive = read_timestamp(state_path.parent / ALIVE_FILENAME)
                 connected = alive > 0 and (now - alive) <= 6.0
+
+                if connected != last_connected:
+                    log("游戏已连接，和留声机同步" if connected
+                        else "游戏未连接（没有心跳或心跳已过期）")
+                    last_connected = connected
 
                 state = read_state(state_path) if (connected and state_path) else None
                 playing = (state is not None
