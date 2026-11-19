@@ -14,6 +14,9 @@ __pycache__/
 zip/
 /*.zip
 
+# 临时/缓存（打包中间产物、解包的游戏脚本），随时可以整个删掉
+/cache/
+
 # 系统文件
 Thumbs.db
 desktop.ini

@@ -176,33 +176,59 @@ def read_state(path):
             "volume": number("volume"), "pan": number("pan")}
 
 
-def find_state_file():
-    root = Path.home() / "Documents" / "Klei" / "DoNotStarveTogether"
-    if not root.is_dir():
-        return None
+def iter_save_dirs(root, max_depth=6):
+    """列出所有还带着心跳文件的存档目录。
 
-    beats = []
-    for pattern in ("*/save/", "*/*/save/", "*/*/*/save/"):
+    存档有两种放法，层数不一样：
+        本地  <userid>/Cluster_3/Master/save/
+        云端  <userid>/CloudSaves/<云端id>/Master/save/    <- 比本地多一层
+    所以不能按固定深度去 glob，只能一层层往下找。
+    trash/ 是删掉的旧存档、backup/ 是日志备份，都不算。
+    """
+    pending = [(root, 0)]
+    while pending:
+        folder, depth = pending.pop()
+        if folder.name == "save" and (folder / ALIVE_FILENAME).is_file():
+            yield folder
+            continue
+        if depth >= max_depth:
+            continue
         try:
-            beats.extend(root.glob(pattern + ALIVE_FILENAME))
+            with os.scandir(folder) as entries:
+                for entry in entries:
+                    if entry.name in ("trash", "backup"):
+                        continue
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            pending.append((Path(entry.path), depth + 1))
+                    except OSError:
+                        continue
         except OSError:
             continue
+
+
+def find_state_file(root=None):
+    if root is None:
+        root = Path.home() / "Documents" / "Klei" / "DoNotStarveTogether"
+    root = Path(root)
+    if not root.is_dir():
+        return None
 
     now = time.time()
     newest_dir, newest_beat = None, 0.0
     playing_dir, playing_time = None, 0.0
 
-    for beat in beats:
-        stamp = read_timestamp(beat)
+    for save_dir in iter_save_dirs(root):
+        stamp = read_timestamp(save_dir / ALIVE_FILENAME)
         if stamp > newest_beat:
-            newest_beat, newest_dir = stamp, beat.parent
+            newest_beat, newest_dir = stamp, save_dir
 
-        state = read_state(beat.parent / STATE_FILENAME)
+        state = read_state(save_dir / STATE_FILENAME)
         if (state is not None
                 and state["action"] == "play"
                 and now - state["time"] <= 8.0
                 and state["time"] > playing_time):
-            playing_dir, playing_time = beat.parent, state["time"]
+            playing_dir, playing_time = save_dir, state["time"]
 
     chosen = playing_dir or newest_dir
     return chosen / STATE_FILENAME if chosen else None
