@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import zipfile
 from pathlib import Path
 from tkinter import filedialog, ttk
 
@@ -141,19 +142,19 @@ def scan_tracks(folder):
 
 # ---------------------------------------------------------------- 找游戏状态
 
-def read_timestamp(path):
-    try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
-    except (OSError, AttributeError):
+HEARTBEAT_TIMEOUT = 12.0   # 心跳这么久没更新就当游戏关了（云存档落进 zip 有延迟）
+STATE_TIMEOUT = 30.0       # 找存档时判定「最近还在放」的宽限
+
+
+def parse_timestamp(text):
+    if not text:
         return 0.0
     match = re.search(r"(\d{9,})", text)
     return float(match.group(1)) if match else 0.0
 
 
-def read_state(path):
-    try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
-    except (OSError, AttributeError):
+def parse_state(text):
+    if not text:
         return None
 
     fields = dict(re.findall(r"([A-Za-z_]\w*)=([^\s]*)", text))
@@ -176,20 +177,81 @@ def read_state(path):
             "volume": number("volume"), "pan": number("pan")}
 
 
-def iter_save_dirs(root, max_depth=6):
-    """列出所有还带着心跳文件的存档目录。
+def read_text(path):
+    try:
+        return path.read_text(encoding="utf-8", errors="ignore")
+    except (OSError, AttributeError):
+        return None
 
-    存档有两种放法，层数不一样：
-        本地  <userid>/Cluster_3/Master/save/
-        云端  <userid>/CloudSaves/<云端id>/Master/save/    <- 比本地多一层
-    所以不能按固定深度去 glob，只能一层层往下找。
+
+def read_timestamp(path):
+    return parse_timestamp(read_text(path))
+
+
+def read_state(path):
+    return parse_state(read_text(path))
+
+
+class SaveSlot:
+    """一处存档。
+
+    本地存档是磁盘目录：
+        <userid>/Cluster_3/Master/save/dst_music_bridge
+
+    云端存档（Steam 云存档）运行时不保留解压目录，整个存档只有 zip：
+        <userid>/CloudSaves/<云端id>/Master.zip  里是 save/dst_music_bridge
+    这就是以前按目录找、云存档永远找不到的原因。
+    """
+
+    def __init__(self, kind, path):
+        self.kind = kind
+        self.path = path
+        self._cache_key = None
+        self._cache = (None, None)
+
+    def __str__(self):
+        return "%s %s" % ("云存档" if self.kind == "zip" else "本地存档", self.path)
+
+    def snapshot(self):
+        """一次读出心跳和播放状态，避免为两个文件重复打开同一个 zip。"""
+        if self.kind == "dir":
+            return (read_text(self.path / ALIVE_FILENAME),
+                    read_text(self.path / STATE_FILENAME))
+
+        try:
+            stat = self.path.stat()
+        except OSError:
+            return (None, None)
+
+        # 云存档每 2 秒重写一次 zip，内容没变就不用重新解压
+        key = (stat.st_mtime, stat.st_size)
+        if key == self._cache_key:
+            return self._cache
+
+        try:
+            with zipfile.ZipFile(self.path) as archive:
+                result = (archive.read("save/" + ALIVE_FILENAME).decode("utf-8", "ignore"),
+                          archive.read("save/" + STATE_FILENAME).decode("utf-8", "ignore"))
+        except (OSError, KeyError, zipfile.BadZipFile):
+            # 游戏正在重写 zip 时可能读到半个文件，下次再读就好
+            return (None, None)
+
+        self._cache_key = key
+        self._cache = result
+        return result
+
+
+def iter_save_slots(root, max_depth=6):
+    """列出所有可能装着状态文件的存档（磁盘目录或云存档 zip）。
+
+    层数不固定（云端比本地多一层 CloudSaves/<id>），所以不能按固定深度 glob。
     trash/ 是删掉的旧存档、backup/ 是日志备份，都不算。
     """
     pending = [(root, 0)]
     while pending:
         folder, depth = pending.pop()
         if folder.name == "save" and (folder / ALIVE_FILENAME).is_file():
-            yield folder
+            yield SaveSlot("dir", folder)
             continue
         if depth >= max_depth:
             continue
@@ -201,6 +263,8 @@ def iter_save_dirs(root, max_depth=6):
                     try:
                         if entry.is_dir(follow_symlinks=False):
                             pending.append((Path(entry.path), depth + 1))
+                        elif entry.name.lower().endswith(".zip"):
+                            yield SaveSlot("zip", Path(entry.path))
                     except OSError:
                         continue
         except OSError:
@@ -208,7 +272,7 @@ def iter_save_dirs(root, max_depth=6):
 
 
 def state_roots():
-    """存档根目录候选：正常是「文档」里的，个别电脑的文档被 OneDrive 接管。"""
+    """存档根目录候选：正常在「文档」，个别电脑的文档被 OneDrive 接管。"""
     home = Path.home()
     candidates = [
         home / "Documents" / "Klei" / "DoNotStarveTogether",
@@ -222,31 +286,78 @@ def state_roots():
     return roots
 
 
-def find_state_file(root=None):
+def find_state_slot(root=None):
     roots = [Path(root)] if root is not None else state_roots()
     roots = [r for r in roots if r.is_dir()]
     if not roots:
         return None
 
     now = time.time()
-    newest_dir, newest_beat = None, 0.0
-    playing_dir, playing_time = None, 0.0
+    newest_slot, newest_beat = None, 0.0
+    playing_slot, playing_time = None, 0.0
 
     for base in roots:
-        for save_dir in iter_save_dirs(base):
-            stamp = read_timestamp(save_dir / ALIVE_FILENAME)
+        for slot in iter_save_slots(base):
+            alive_text, bridge_text = slot.snapshot()
+            stamp = parse_timestamp(alive_text)
+            if stamp <= 0:
+                # 没有心跳文件（普通 zip、别的东西），不是存档
+                continue
             if stamp > newest_beat:
-                newest_beat, newest_dir = stamp, save_dir
+                newest_beat, newest_slot = stamp, slot
 
-            state = read_state(save_dir / STATE_FILENAME)
+            state = parse_state(bridge_text)
             if (state is not None
                     and state["action"] == "play"
-                    and now - state["time"] <= 8.0
+                    and now - state["time"] <= STATE_TIMEOUT
                     and state["time"] > playing_time):
-                playing_dir, playing_time = save_dir, state["time"]
+                playing_slot, playing_time = slot, state["time"]
 
-    chosen = playing_dir or newest_dir
-    return chosen / STATE_FILENAME if chosen else None
+    return playing_slot or newest_slot
+
+
+# 分片存档里固定叫这两个名字，即使暂时读不到也要一直盯着
+SHARD_ZIP_NAMES = ("master.zip", "caves.zip")
+
+
+def discover_slots(root=None):
+    """找出值得盯着的存档，缓存下来反复读。"""
+    roots = [Path(root)] if root is not None else state_roots()
+    slots = []
+    for base in roots:
+        if not base.is_dir():
+            continue
+        for slot in iter_save_slots(base):
+            if slot.kind == "zip" and slot.path.name.lower() not in SHARD_ZIP_NAMES:
+                # 普通 zip：只有真带状态文件才算存档
+                if parse_timestamp(slot.snapshot()[0]) <= 0:
+                    continue
+            slots.append(slot)
+    return slots
+
+
+def inspect_saves(slots):
+    """汇总所有存档，返回 (最新心跳时间, 最后一次留声机状态)。
+
+    心跳回答「哪个世界还活着」，状态回答「留声机最后一次是真开还是真关」。
+    玩家进洞穴后地表分片会暂停、状态冻结在当时的 play，洞穴分片虽然活着
+    但它的状态是很久以前的 stop —— 所以这两件事必须分开看，否则一下洞就没声。
+    """
+    newest_alive = 0.0
+    best_state = None
+    best_time = 0.0
+
+    for slot in slots:
+        alive_text, bridge_text = slot.snapshot()
+        alive = parse_timestamp(alive_text)
+        if alive > newest_alive:
+            newest_alive = alive
+
+        state = parse_state(bridge_text)
+        if state is not None and state["time"] > best_time:
+            best_time, best_state = state["time"], state
+
+    return newest_alive, best_state
 
 
 # ================================================================ 音频子进程
@@ -738,40 +849,36 @@ class GameWatcher(threading.Thread):
         self.stop_event = threading.Event()
 
     def run(self):
-        state_path = None
-        discovered = False
+        slots = []
         next_discover = 0.0
+        logged = None
         last_connected = None
 
         while not self.stop_event.is_set():
             now = time.time()
             try:
-                if state_path is None or now >= next_discover:
+                if not slots or now >= next_discover:
                     next_discover = now + 2.0
-                    found = find_state_file()
-                    if not discovered or found != state_path:
-                        discovered = True
-                        if found is None:
-                            log("没找到存档里的状态文件（扫过：%s）"
+                    slots = discover_slots()
+                    names = tuple(str(s) for s in slots)
+                    if names != logged:
+                        logged = names
+                        if not slots:
+                            log("没找到存档（扫过：%s）"
                                 % "、".join(str(r) for r in state_roots()))
                         else:
-                            log("存档状态文件：%s" % found)
-                    state_path = found
+                            log("监控存档：%s" % "；".join(str(s) for s in slots))
 
-                alive = 0.0
-                if state_path is not None:
-                    alive = read_timestamp(state_path.parent / ALIVE_FILENAME)
-                connected = alive > 0 and (now - alive) <= 6.0
+                alive, state = inspect_saves(slots)
+                connected = alive > 0 and (now - alive) <= HEARTBEAT_TIMEOUT
+                playing = (connected
+                           and state is not None
+                           and state["action"] == "play")
 
                 if connected != last_connected:
                     log("游戏已连接，和留声机同步" if connected
                         else "游戏未连接（没有心跳或心跳已过期）")
                     last_connected = connected
-
-                state = read_state(state_path) if (connected and state_path) else None
-                playing = (state is not None
-                           and state["action"] == "play"
-                           and (now - state["time"]) <= 8.0)
 
                 self.client.send(
                     cmd="game",
@@ -906,8 +1013,10 @@ class App:
                 self.status.configure(text="⚠ " + state["error"])
             elif not count:
                 self.status.configure(text="没有找到歌，点「选择文件夹」挑一个")
-            elif game.get("connected"):
+            elif game.get("connected") and game.get("playing"):
                 self.status.configure(text="游戏已开，和留声机同步")
+            elif game.get("connected"):
+                self.status.configure(text="游戏已开，留声机没响（放上唱片并打开留声机）")
             else:
                 self.status.configure(text="游戏没开，正常播放")
 
